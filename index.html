@@ -8,16 +8,20 @@
 *{box-sizing:border-box}
 body{margin:0;background:#0b1220;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 .bar{display:flex;gap:7px;overflow-x:auto;padding:8px;background:#0f172a;border-bottom:1px solid #253044;position:sticky;top:0;z-index:30}
-button,a{white-space:nowrap;border:1px solid #475569;border-radius:10px;background:#1e293b;color:#e5e7eb;padding:9px 11px;font-size:14px;text-decoration:none}
-button.primary{background:#2563eb;border-color:#60a5fa;font-weight:700}
+button,a,select{white-space:nowrap;border:1px solid #475569;border-radius:10px;background:#1e293b;color:#e5e7eb;padding:9px 11px;font-size:14px;text-decoration:none}
+button.active,.primary{background:#2563eb;border-color:#60a5fa;font-weight:700}
 .title{background:#1f2937;color:#fff;padding:7px 10px;font-size:13px}
-.viewer{height:calc(100vh - 90px);overflow:hidden;background:#dbe3ee;position:relative}
-.framewrap{position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;background:#dbe3ee}
-iframe{position:absolute;width:1500px;height:1100px;border:0;transform-origin:0 0;background:white}
-.stamp{position:absolute;top:12px;left:12px;background:rgba(15,23,42,.82);border:1px solid rgba(255,255,255,.45);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.35;z-index:10;color:#fff;max-width:310px}
+.viewer{height:calc(100vh - 88px);overflow:hidden;background:#dbe3ee;position:relative}
+.mapbox{position:relative;width:100%;height:100%;overflow:hidden;background:#e5e7eb}
+#mapImg{position:absolute;left:0;top:0;width:1400px;height:auto;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
+.stamp{position:absolute;top:12px;left:12px;background:rgba(15,23,42,.84);border:1px solid rgba(255,255,255,.5);border-radius:10px;color:#fff;padding:10px 12px;font-size:13px;line-height:1.35;z-index:8;min-width:245px}
+.stamp b{font-size:14px}
+.fallback{display:none;position:absolute;left:16px;right:16px;top:120px;padding:14px;color:#111;background:white;border-radius:10px;z-index:9}.fallback a{color:#1d4ed8}
 @media(max-width:800px){
-  .viewer{height:calc(100vh - 88px)}
-  button,a{font-size:14px;padding:9px 10px}
+  .viewer{height:calc(100vh - 86px)}
+  button,a,select{font-size:14px;padding:9px 10px}
+  #mapImg{width:1350px}
+  .stamp{font-size:12px;min-width:230px}
 }
 </style>
 </head>
@@ -25,51 +29,102 @@ iframe{position:absolute;width:1500px;height:1100px;border:0;transform-origin:0 
 
 <div class="bar">
   <button class="primary" onclick="resetUK()">UK view</button>
-  <button onclick="resetFull()">Full page</button>
+  <button onclick="stepFrame(-1)">◀ -3h</button>
+  <select id="frameSelect" onchange="setFrame(this.value)"></select>
+  <button onclick="stepFrame(1)">+3h ▶</button>
+  <button id="loopBtn" onclick="toggleLoop()">▶ Loop</button>
   <button onclick="zoom(1.12)">Zoom +</button>
   <button onclick="zoom(0.89)">Zoom -</button>
-  <button onclick="pan(-40,0)">◀</button>
-  <button onclick="pan(40,0)">▶</button>
-  <button onclick="pan(0,-40)">▲</button>
-  <button onclick="pan(0,40)">▼</button>
-  <button onclick="reloadFrame()">Refresh</button>
-  <a href="https://weather.essl.org/storm/" target="_blank" rel="noopener">Open ESSL</a>
+  <button onclick="pan(-35,0)">◀</button>
+  <button onclick="pan(35,0)">▶</button>
+  <button onclick="pan(0,-35)">▲</button>
+  <button onclick="pan(0,35)">▼</button>
+  <a id="open" href="#" target="_blank" rel="noopener">Full image</a>
 </div>
 
-<div class="title">ESSL Storm Guidance - UK focused view</div>
+<div class="title" id="title">Loading...</div>
 
 <div class="viewer">
-  <div class="framewrap">
-    <iframe id="esslFrame" src="https://weather.essl.org/storm/"></iframe>
-  </div>
-
-  <div class="stamp">
-    <b>ESSL UK View</b><br>
-    UK-focused zoom applied.<br>
-    Use the ESSL page controls inside the map area for 24h / 3h products.
+  <div class="mapbox" id="mapbox">
+    <img id="mapImg" alt="ESSL map">
+    <div class="stamp" id="stamp"></div>
+    <div class="fallback" id="fallback">
+      Image did not load. Tap <a id="fallbackLink" target="_blank" rel="noopener">Full image</a>.
+    </div>
   </div>
 </div>
 
 <script>
-let view = JSON.parse(localStorage.getItem('essl_uk_view') || 'null') || {
-  scale: 1.55,
-  x: -445,
-  y: -150
-};
+const base='https://weather.essl.org/storm/map_images/models/archamos/';
+const run='2026060112';
+const yyyymm=run.slice(0,6);
 
-function applyView(){
-  const f=document.getElementById('esslFrame');
-  f.style.transform='translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
-  localStorage.setItem('essl_uk_view', JSON.stringify(view));
+const frames=[
+'2026060115','2026060118','2026060121',
+'2026060200','2026060203','2026060206','2026060209','2026060212','2026060215','2026060218','2026060221',
+'2026060300','2026060303','2026060306','2026060309','2026060312','2026060315','2026060318','2026060321',
+'2026060400'
+];
+
+let frameIndex=Number(localStorage.getItem('essl_frame_index')||0);
+let view=JSON.parse(localStorage.getItem('essl_view')||'null') || {scale:1.55,x:-430,y:-130};
+
+function imgUrl(){
+  const valid=frames[frameIndex];
+  return base+yyyymm+'/'+run+'/combi_paramcombi3_'+run+'_'+valid+'.png';
 }
 
-function resetUK(){
-  view={scale:1.55,x:-445,y:-150};
+function fmt(t){
+  const y=t.slice(0,4),m=t.slice(4,6),d=t.slice(6,8),h=t.slice(8,10);
+  return d+'/'+m+'/'+y+' '+h+'Z';
+}
+
+function applyView(){
+  const img=document.getElementById('mapImg');
+  img.style.transform='translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
+  localStorage.setItem('essl_view',JSON.stringify(view));
+}
+
+function refresh(){
+  const url=imgUrl();
+  const valid=frames[frameIndex];
+
+  localStorage.setItem('essl_frame_index',String(frameIndex));
+
+  document.getElementById('title').textContent='ESSL 3-hour probability of large hail and lightning - valid '+fmt(valid);
+  document.getElementById('open').href=url;
+  document.getElementById('fallbackLink').href=url;
+  document.getElementById('frameSelect').value=String(frameIndex);
+
+  const img=document.getElementById('mapImg');
+  document.getElementById('fallback').style.display='none';
+  img.onload=()=>{document.getElementById('fallback').style.display='none';};
+  img.onerror=()=>{document.getElementById('fallback').style.display='block';};
+  img.src=url;
+
+  document.getElementById('stamp').innerHTML=
+    '<b>ESSL AR-CHaMo</b><br>'+
+    'Product: Large hail + lightning 3h<br>'+
+    'Run: '+fmt(run)+'<br>'+
+    'Valid: '+fmt(valid);
+
   applyView();
 }
 
-function resetFull(){
-  view={scale:1,x:0,y:0};
+function setFrame(v){
+  frameIndex=Number(v);
+  refresh();
+}
+
+function stepFrame(delta){
+  const next=frameIndex+delta;
+  if(next<0||next>=frames.length)return;
+  frameIndex=next;
+  refresh();
+}
+
+function resetUK(){
+  view={scale:1.55,x:-430,y:-130};
   applyView();
 }
 
@@ -80,20 +135,45 @@ function pan(dx,dy){
 }
 
 function zoom(factor){
-  const cx=window.innerWidth/2;
-  const cy=window.innerHeight/2;
+  const box=document.getElementById('mapbox');
+  const cx=box.clientWidth/2;
+  const cy=box.clientHeight/2;
   view.x=cx-(cx-view.x)*factor;
   view.y=cy-(cy-view.y)*factor;
   view.scale*=factor;
   applyView();
 }
 
-function reloadFrame(){
-  const f=document.getElementById('esslFrame');
-  f.src='https://weather.essl.org/storm/?t='+Date.now();
+let loopTimer=null;
+function toggleLoop(){
+  const btn=document.getElementById('loopBtn');
+  if(loopTimer){
+    clearInterval(loopTimer);
+    loopTimer=null;
+    btn.textContent='▶ Loop';
+    btn.classList.remove('active');
+    return;
+  }
+  btn.textContent='■ Stop';
+  btn.classList.add('active');
+  loopTimer=setInterval(()=>{
+    frameIndex=(frameIndex+1)%frames.length;
+    refresh();
+  },800);
 }
 
-applyView();
+function init(){
+  const sel=document.getElementById('frameSelect');
+  frames.forEach((f,i)=>{
+    const o=document.createElement('option');
+    o.value=String(i);
+    o.textContent=fmt(f);
+    sel.appendChild(o);
+  });
+  refresh();
+}
+
+init();
 </script>
 
 </body>
