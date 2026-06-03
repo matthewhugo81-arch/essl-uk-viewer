@@ -13,7 +13,19 @@ button.active,.primary{background:#2563eb;border-color:#60a5fa;font-weight:700}
 .title{background:#1f2937;color:#fff;padding:7px 10px;font-size:13px}
 .viewer{height:calc(100vh - 88px);overflow:hidden;background:#dbe3ee;position:relative}
 .mapbox{position:relative;width:100%;height:100%;overflow:hidden;background:#e5e7eb}
-#mapImg{position:absolute;left:0;top:0;width:1400px;height:auto;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
+#mapImg{
+  position:absolute;
+  left:0;
+  top:0;
+  width:1400px;
+  height:auto;
+  max-width:none;
+  transform-origin:0 0;
+  user-select:none;
+  -webkit-user-drag:none;
+  image-rendering:-webkit-optimize-contrast;
+  image-rendering:crisp-edges;
+}
 .stamp{position:absolute;top:12px;left:12px;background:rgba(15,23,42,.84);border:1px solid rgba(255,255,255,.5);border-radius:10px;color:#fff;padding:10px 12px;font-size:13px;line-height:1.35;z-index:8;min-width:245px}
 .stamp b{font-size:14px}
 .fallback{display:none;position:absolute;left:16px;right:16px;top:120px;padding:14px;color:#111;background:white;border-radius:10px;z-index:9}.fallback a{color:#1d4ed8}
@@ -67,7 +79,11 @@ const frames=[
 ];
 
 let frameIndex=Number(localStorage.getItem('essl_frame_index')||0);
-let view=JSON.parse(localStorage.getItem('essl_view')||'null') || {scale:1.55,x:-430,y:-130};
+
+// Wider and sharper UK default view.
+// Lower scale avoids over-enlarging the source PNG.
+// X shifted east/right compared with the earlier view.
+let view=JSON.parse(localStorage.getItem('essl_view')||'null') || {scale:1.35,x:-180,y:-90};
 
 function imgUrl(){
   const valid=frames[frameIndex];
@@ -124,7 +140,7 @@ function stepFrame(delta){
 }
 
 function resetUK(){
-  view={scale:1.55,x:-430,y:-130};
+  view={scale:1.35,x:-180,y:-90};
   applyView();
 }
 
