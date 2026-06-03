@@ -1,1 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ESSL UK Storm Viewer</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#0b1220;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  .bar{display:flex;gap:7px;overflow-x:auto;padding:8px;background:#0f172a;border-bottom:1px solid #253044;position:sticky;top:0;z-index:20}
+  button,a{white-space:nowrap;border:1px solid #475569;border-radius:10px;background:#1e293b;color:#e5e7eb;padding:9px 11px;font-size:14px;text-decoration:none}
+  button.primary{background:#2563eb;border-color:#60a5fa;font-weight:700}
+  .title{background:#1f2937;color:#fff;padding:7px 10px;font-size:13px}
+  .viewer{height:calc(100vh - 92px);overflow:hidden;background:#dbe3ee;position:relative}
+  .framewrap{position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;background:#dbe3ee}
+  iframe{position:absolute;width:1500px;height:1100px;border:0;transform-origin:0 0;background:white}
+  .stamp{position:absolute;top:12px;left:12px;background:rgba(15,23,42,.82);border:1px solid rgba(255,255,255,.45);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.35;z-index:10;color:#fff}
+  @media(max-width:800px){
+    .viewer{height:calc(100vh - 90px)}
+    button,a{font-size:14px;padding:9px 10px}
+  }
+</style>
+</head>
+<body>
 
+<div class="bar">
+  <button class="primary" onclick="resetUK()">UK view</button>
+  <button onclick="zoom(1.12)">Zoom +</button>
+  <button onclick="zoom(0.89)">Zoom -</button>
+  <button onclick="pan(-35,0)">◀</button>
+  <button onclick="pan(35,0)">▶</button>
+  <button onclick="pan(0,-35)">▲</button>
+  <button onclick="pan(0,35)">▼</button>
+  <button onclick="reloadFrame()">Refresh</button>
+  <a href="https://weather.essl.org/storm/" target="_blank" rel="noopener">Open ESSL</a>
+</div>
+
+<div class="title">ESSL Storm Guidance - UK focused view</div>
+
+<div class="viewer">
+  <div class="framewrap">
+    <iframe id="esslFrame" src="https://weather.essl.org/storm/"></iframe>
+  </div>
+  <div class="stamp">
+    <b>ESSL Storm Guidance</b><br>
+    UK focused crop<br>
+    Use ESSL controls inside the page for times/maps
+  </div>
+</div>
+
+<script>
+let view = JSON.parse(localStorage.getItem('essl_uk_view') || 'null') || {
+  scale: 1.55,
+  x: -445,
+  y: -150
+};
+
+function applyView(){
+  const f=document.getElementById('esslFrame');
+  f.style.transform='translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
+  localStorage.setItem('essl_uk_view', JSON.stringify(view));
+}
+
+function resetUK(){
+  view={scale:1.55,x:-445,y:-150};
+  applyView();
+}
+
+function pan(dx,dy){
+  view.x+=dx;
+  view.y+=dy;
+  applyView();
+}
+
+function zoom(factor){
+  const cx=window.innerWidth/2;
+  const cy=window.innerHeight/2;
+  view.x=cx-(cx-view.x)*factor;
+  view.y=cy-(cy-view.y)*factor;
+  view.scale*=factor;
+  applyView();
+}
+
+function reloadFrame(){
+  const f=document.getElementById('esslFrame');
+  f.src='https://weather.essl.org/storm/?t='+Date.now();
+}
+
+applyView();
+</script>
+
+</body>
+</html>
