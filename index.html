@@ -13,19 +13,7 @@ button.active,.primary{background:#2563eb;border-color:#60a5fa;font-weight:700}
 .title{background:#1f2937;color:#fff;padding:7px 10px;font-size:13px}
 .viewer{height:calc(100vh - 88px);overflow:hidden;background:#dbe3ee;position:relative}
 .mapbox{position:relative;width:100%;height:100%;overflow:hidden;background:#e5e7eb}
-#mapImg{
-  position:absolute;
-  left:0;
-  top:0;
-  width:1400px;
-  height:auto;
-  max-width:none;
-  transform-origin:0 0;
-  user-select:none;
-  -webkit-user-drag:none;
-  image-rendering:-webkit-optimize-contrast;
-  image-rendering:crisp-edges;
-}
+#mapImg{position:absolute;left:0;top:0;width:1400px;height:auto;max-width:none;transform-origin:0 0;user-select:none;-webkit-user-drag:none;image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges}
 .stamp{position:absolute;top:12px;left:12px;background:rgba(15,23,42,.84);border:1px solid rgba(255,255,255,.5);border-radius:10px;color:#fff;padding:10px 12px;font-size:13px;line-height:1.35;z-index:8;min-width:245px}
 .stamp b{font-size:14px}
 .fallback{display:none;position:absolute;left:16px;right:16px;top:120px;padding:14px;color:#111;background:white;border-radius:10px;z-index:9}.fallback a{color:#1d4ed8}
@@ -51,61 +39,99 @@ button.active,.primary{background:#2563eb;border-color:#60a5fa;font-weight:700}
   <button onclick="pan(35,0)">▶</button>
   <button onclick="pan(0,-35)">▲</button>
   <button onclick="pan(0,35)">▼</button>
+  <button onclick="detectLatestRun()">Update run</button>
   <a id="open" href="#" target="_blank" rel="noopener">Full image</a>
 </div>
 
-<div class="title" id="title">Loading...</div>
+<div class="title" id="title">Detecting latest ESSL run...</div>
 
 <div class="viewer">
   <div class="mapbox" id="mapbox">
     <img id="mapImg" alt="ESSL map">
     <div class="stamp" id="stamp"></div>
-    <div class="fallback" id="fallback">
-      Image did not load. Tap <a id="fallbackLink" target="_blank" rel="noopener">Full image</a>.
-    </div>
+    <div class="fallback" id="fallback">Image did not load. Tap <a id="fallbackLink" target="_blank" rel="noopener">Full image</a>.</div>
   </div>
 </div>
 
 <script>
 const base='https://weather.essl.org/storm/map_images/models/archamos/';
-const run='2026060112';
-const yyyymm=run.slice(0,6);
-
-const frames=[
-'2026060115','2026060118','2026060121',
-'2026060200','2026060203','2026060206','2026060209','2026060212','2026060215','2026060218','2026060221',
-'2026060300','2026060303','2026060306','2026060309','2026060312','2026060315','2026060318','2026060321',
-'2026060400'
-];
-
-let frameIndex=Number(localStorage.getItem('essl_frame_index')||0);
-
-// Wider and sharper UK default view.
-// Lower scale avoids over-enlarging the source PNG.
-// X shifted east/right compared with the earlier view.
+let run=null;
+let frames=[];
+let frameIndex=0;
 let view=JSON.parse(localStorage.getItem('essl_view')||'null') || {scale:1.35,x:-180,y:-90};
 
-function imgUrl(){
-  const valid=frames[frameIndex];
-  return base+yyyymm+'/'+run+'/combi_paramcombi3_'+run+'_'+valid+'.png';
+function pad(n){return String(n).padStart(2,'0');}
+function ymdh(dt){return dt.getUTCFullYear()+pad(dt.getUTCMonth()+1)+pad(dt.getUTCDate())+pad(dt.getUTCHours());}
+function addHours(yyyymmddhh,h){
+  const y=+yyyymmddhh.slice(0,4),m=+yyyymmddhh.slice(4,6)-1,d=+yyyymmddhh.slice(6,8),hr=+yyyymmddhh.slice(8,10);
+  return ymdh(new Date(Date.UTC(y,m,d,hr+h)));
 }
-
 function fmt(t){
   const y=t.slice(0,4),m=t.slice(4,6),d=t.slice(6,8),h=t.slice(8,10);
   return d+'/'+m+'/'+y+' '+h+'Z';
 }
+function imgUrl(r=run,valid=frames[frameIndex]){
+  const yyyymm=r.slice(0,6);
+  return base+yyyymm+'/'+r+'/combi_paramcombi3_'+r+'_'+valid+'.png';
+}
+function testImage(url){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>resolve(true);
+    img.onerror=()=>resolve(false);
+    img.src=url+'?probe='+Date.now();
+  });
+}
+function candidateRuns(){
+  const now=new Date();
+  const out=[];
+  for(let back=0;back<=7;back++){
+    const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()-back,0));
+    out.push(ymdh(new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12))));
+    out.push(ymdh(new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),0))));
+  }
+  return out;
+}
+async function detectLatestRun(){
+  document.getElementById('title').textContent='Checking latest available ESSL run...';
+  document.getElementById('stamp').innerHTML='<b>ESSL AR-CHaMo</b><br>Checking latest run...';
 
+  for(const r of candidateRuns()){
+    const firstValid=addHours(r,3);
+    const testUrl=base+r.slice(0,6)+'/'+r+'/combi_paramcombi3_'+r+'_'+firstValid+'.png';
+    const ok=await testImage(testUrl);
+    if(ok){
+      run=r;
+      frames=[];
+      for(let h=3;h<=72;h+=3) frames.push(addHours(run,h));
+      frameIndex=0;
+      populateFrameSelect();
+      refresh();
+      return;
+    }
+  }
+
+  document.getElementById('title').textContent='No recent ESSL run found.';
+  document.getElementById('fallback').style.display='block';
+}
+function populateFrameSelect(){
+  const sel=document.getElementById('frameSelect');
+  sel.innerHTML='';
+  frames.forEach((f,i)=>{
+    const o=document.createElement('option');
+    o.value=String(i);
+    o.textContent=fmt(f);
+    sel.appendChild(o);
+  });
+}
 function applyView(){
-  const img=document.getElementById('mapImg');
-  img.style.transform='translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
+  document.getElementById('mapImg').style.transform='translate('+view.x+'px,'+view.y+'px) scale('+view.scale+')';
   localStorage.setItem('essl_view',JSON.stringify(view));
 }
-
 function refresh(){
+  if(!run || !frames.length)return;
   const url=imgUrl();
   const valid=frames[frameIndex];
-
-  localStorage.setItem('essl_frame_index',String(frameIndex));
 
   document.getElementById('title').textContent='ESSL 3-hour probability of large hail and lightning - valid '+fmt(valid);
   document.getElementById('open').href=url;
@@ -116,7 +142,7 @@ function refresh(){
   document.getElementById('fallback').style.display='none';
   img.onload=()=>{document.getElementById('fallback').style.display='none';};
   img.onerror=()=>{document.getElementById('fallback').style.display='block';};
-  img.src=url;
+  img.src=url+'?t='+Date.now();
 
   document.getElementById('stamp').innerHTML=
     '<b>ESSL AR-CHaMo</b><br>'+
@@ -126,40 +152,23 @@ function refresh(){
 
   applyView();
 }
-
-function setFrame(v){
-  frameIndex=Number(v);
-  refresh();
-}
-
+function setFrame(v){frameIndex=Number(v);refresh();}
 function stepFrame(delta){
   const next=frameIndex+delta;
   if(next<0||next>=frames.length)return;
   frameIndex=next;
   refresh();
 }
-
-function resetUK(){
-  view={scale:1.35,x:-180,y:-90};
-  applyView();
-}
-
-function pan(dx,dy){
-  view.x+=dx;
-  view.y+=dy;
-  applyView();
-}
-
+function resetUK(){view={scale:1.35,x:-180,y:-90};applyView();}
+function pan(dx,dy){view.x+=dx;view.y+=dy;applyView();}
 function zoom(factor){
   const box=document.getElementById('mapbox');
-  const cx=box.clientWidth/2;
-  const cy=box.clientHeight/2;
+  const cx=box.clientWidth/2,cy=box.clientHeight/2;
   view.x=cx-(cx-view.x)*factor;
   view.y=cy-(cy-view.y)*factor;
   view.scale*=factor;
   applyView();
 }
-
 let loopTimer=null;
 function toggleLoop(){
   const btn=document.getElementById('loopBtn');
@@ -177,19 +186,7 @@ function toggleLoop(){
     refresh();
   },800);
 }
-
-function init(){
-  const sel=document.getElementById('frameSelect');
-  frames.forEach((f,i)=>{
-    const o=document.createElement('option');
-    o.value=String(i);
-    o.textContent=fmt(f);
-    sel.appendChild(o);
-  });
-  refresh();
-}
-
-init();
+detectLatestRun();
 </script>
 
 </body>
